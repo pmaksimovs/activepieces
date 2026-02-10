@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  activepieces:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: activepieces-local:latest
+    container_name: activepieces
+    restart: unless-stopped
+    ## Enable the following line if you use AP_EXECUTION_MODE with SANDBOX_PROCESS
+    ## privileged: true
+    ports:
+      - '8080:80'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file: .env
+    environment:
+      - AP_POSTGRES_HOST=postgres
+      - AP_POSTGRES_PORT=5432
+      - AP_REDIS_HOST=redis
+      - AP_REDIS_PORT=6379
+    volumes:
+      - ./cache:/usr/src/app/cache
+    networks:
+      - activepieces
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/v1/flags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  postgres:
+    image: 'postgres:14.4'
+    container_name: postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - 'POSTGRES_DB=${AP_POSTGRES_DATABASE}'
+      - 'POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD}'
+      - 'POSTGRES_USER=${AP_POSTGRES_USERNAME}'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - activepieces
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AP_POSTGRES_USERNAME} -d ${AP_POSTGRES_DATABASE}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: 'redis:7.0.7'
+    container_name: redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - 'redis_data:/data'
+    networks:
+      - activepieces
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  activepieces:
+    driver: bridge
